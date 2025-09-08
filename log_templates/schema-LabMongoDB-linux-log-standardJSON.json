@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "_id",
+    "resourceLogs"
+  ],
+  "properties": {
+    "_id": {
+      "$ref": "#/$defs/ObjectId"
+    },
+    "resourceLogs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "resource",
+          "schemaUrl",
+          "scopeLogs"
+        ],
+        "properties": {
+          "resource": {
+            "type": "object",
+            "required": [
+              "attributes"
+            ],
+            "properties": {
+              "attributes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "key",
+                    "value"
+                  ],
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": "object",
+                      "required": [
+                        "stringValue"
+                      ],
+                      "properties": {
+                        "stringValue": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "schemaUrl": {
+            "type": "string"
+          },
+          "scopeLogs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "logRecords",
+                "scope"
+              ],
+              "properties": {
+                "logRecords": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "attributes",
+                      "body",
+                      "observedTimeUnixNano",
+                      "spanId",
+                      "traceId"
+                    ],
+                    "properties": {
+                      "attributes": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "required": [
+                            "key",
+                            "value"
+                          ],
+                          "properties": {
+                            "key": {
+                              "type": "string"
+                            },
+                            "value": {
+                              "type": "object",
+                              "required": [
+                                "stringValue"
+                              ],
+                              "properties": {
+                                "stringValue": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "body": {
+                        "type": "object",
+                        "required": [
+                          "stringValue"
+                        ],
+                        "properties": {
+                          "stringValue": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "observedTimeUnixNano": {
+                        "type": "string"
+                      },
+                      "spanId": {
+                        "type": "string"
+                      },
+                      "traceId": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "scope": {
+                  "type": "object",
+                  "required": [],
+                  "properties": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "ObjectId": {
+      "type": "object",
+      "properties": {
+        "$oid": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{24}$"
+        }
+      },
+      "required": [
+        "$oid"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,311 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "body",
+    "channel",
+    "computer",
+    "event_id",
+    "keywords",
+    "level",
+    "message",
+    "observedTime",
+    "opcode",
+    "provider",
+    "record_id",
+    "severityNumber",
+    "severityText",
+    "spanId",
+    "system_time",
+    "task",
+    "timestamp",
+    "traceId"
+  ],
+  "properties": {
+    "body": {
+      "type": "object",
+      "required": [
+        "kvlistValue"
+      ],
+      "properties": {
+        "kvlistValue": {
+          "type": "object",
+          "required": [
+            "values"
+          ],
+          "properties": {
+            "values": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "key",
+                  "value"
+                ],
+                "properties": {
+                  "key": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "object",
+                    "required": [],
+                    "properties": {
+                      "arrayValue": {
+                        "type": "object",
+                        "required": [
+                          "values"
+                        ],
+                        "properties": {
+                          "values": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "stringValue"
+                              ],
+                              "properties": {
+                                "stringValue": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "intValue": {
+                        "type": "string"
+                      },
+                      "kvlistValue": {
+                        "type": "object",
+                        "required": [
+                          "values"
+                        ],
+                        "properties": {
+                          "values": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "key",
+                                "value"
+                              ],
+                              "properties": {
+                                "key": {
+                                  "type": "string"
+                                },
+                                "value": {
+                                  "type": "object",
+                                  "required": [],
+                                  "properties": {
+                                    "arrayValue": {
+                                      "type": "object",
+                                      "required": [
+                                        "values"
+                                      ],
+                                      "properties": {
+                                        "values": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "object",
+                                            "required": [],
+                                            "properties": {
+                                              "kvlistValue": {
+                                                "type": "object",
+                                                "required": [
+                                                  "values"
+                                                ],
+                                                "properties": {
+                                                  "values": {
+                                                    "type": "array",
+                                                    "items": {
+                                                      "type": "object",
+                                                      "required": [
+                                                        "key",
+                                                        "value"
+                                                      ],
+                                                      "properties": {
+                                                        "key": {
+                                                          "type": "string"
+                                                        },
+                                                        "value": {
+                                                          "type": "object",
+                                                          "required": [
+                                                            "stringValue"
+                                                          ],
+                                                          "properties": {
+                                                            "stringValue": {
+                                                              "type": "string"
+                                                            }
+                                                          }
+                                                        }
+                                                      }
+                                                    }
+                                                  }
+                                                }
+                                              },
+                                              "stringValue": {
+                                                "type": "string"
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    },
+                                    "intValue": {
+                                      "type": "string"
+                                    },
+                                    "kvlistValue": {
+                                      "type": "object",
+                                      "required": [
+                                        "values"
+                                      ],
+                                      "properties": {
+                                        "values": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "object",
+                                            "required": [
+                                              "key",
+                                              "value"
+                                            ],
+                                            "properties": {
+                                              "key": {
+                                                "type": "string"
+                                              },
+                                              "value": {
+                                                "type": "object",
+                                                "required": [
+                                                  "stringValue"
+                                                ],
+                                                "properties": {
+                                                  "stringValue": {
+                                                    "type": "string"
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    },
+                                    "stringValue": {
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "stringValue": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "channel": {
+      "type": "string"
+    },
+    "computer": {
+      "type": "string"
+    },
+    "event_id": {
+      "type": "object",
+      "required": [
+        "id",
+        "qualifiers"
+      ],
+      "properties": {
+        "id": {
+          "type": "null"
+        },
+        "qualifiers": {
+          "type": "null"
+        }
+      }
+    },
+    "keywords": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "level": {
+      "type": "string"
+    },
+    "message": {
+      "type": "string"
+    },
+    "observedTime": {
+      "$ref": "#/$defs/Date"
+    },
+    "opcode": {
+      "type": "string"
+    },
+    "provider": {
+      "type": "object",
+      "required": [
+        "event_source",
+        "guid",
+        "name"
+      ],
+      "properties": {
+        "event_source": {
+          "type": "null"
+        },
+        "guid": {
+          "type": "null"
+        },
+        "name": {
+          "type": "null"
+        }
+      }
+    },
+    "record_id": {
+      "type": "integer"
+    },
+    "severityNumber": {
+      "type": "null"
+    },
+    "severityText": {
+      "type": "string"
+    },
+    "spanId": {
+      "type": "string"
+    },
+    "system_time": {
+      "type": "string"
+    },
+    "task": {
+      "type": "string"
+    },
+    "timestamp": {
+      "$ref": "#/$defs/Date"
+    },
+    "traceId": {
+      "type": "string"
+    }
+  },
+  "$defs": {
+    "Date": {
+      "type": "object",
+      "properties": {
+        "$date": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "$date"
+      ],
+      "additionalProperties": false
+    }
+  }
+}
