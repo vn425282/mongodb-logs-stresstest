@@ -1,277 +1,213 @@
 import asyncio
-import random
 import time
-import json
 import os
+import json
+import random
 import re
+import traceback
 from faker import Faker
-from collections import Counter
 import motor.motor_asyncio
-import shutil
-import secrets
+from bson import ObjectId
+from multiprocessing import Pool, Manager
 
-fake = Faker()
+# --- Data Generation Logic (largely unchanged) ---
+# This part is kept separate so it can be run in different processes.
 
-def generate_oid():
-    return secrets.token_hex(12)
-
-def generate_trace_id():
-    return secrets.token_hex(16)
-
-def generate_span_id():
-    return secrets.token_hex(8)
-
-def generate_unix_nano():
-    return str(time.time_ns())
-
+FAKER_INSTANCE = Faker()
 PLACEHOLDER_GENERATORS = {
-    'timestamp': lambda: fake.date_time_this_month().strftime('%d/%b/%Y:%H:%M:%S %z'),
-    'iso_timestamp': fake.iso8601,
-    'ip': fake.ipv4,
-    'uri': fake.uri_path,
-    'referer': fake.uri,
-    'user_agent': fake.user_agent,
-    'status_code': lambda: random.choice([200, 201, 301, 400, 404, 500]),
-    'bytes': lambda: random.randint(100, 15000),
-    'login_status': lambda: random.choice(['SUCCESS', 'FAILED']),
-    'service_name': lambda: random.choice(['billing-service', 'user-api', 'data-processor']),
-    'user_id': lambda: str(fake.uuid4()),
-    'username': fake.user_name,
-    'exception_type': lambda: random.choice(['NullPointerException', 'IOException', 'ValueError', 'TimeoutException']),
-    'file_path': lambda: fake.file_path(depth=3, extension='py'),
-    'line_num': lambda: random.randint(10, 200),
-    'function_name': fake.word,
-    'db_host': lambda: f"db-replica-{random.randint(1,4)}.prod.local",
-    'query_duration': lambda: random.randint(5, 200),
-    'oid': generate_oid,
-    'traceId': generate_trace_id,
-    'spanId': generate_span_id,
-    'timeUnixNano': generate_unix_nano,
-    'observedTimeUnixNano': generate_unix_nano,
-    'startTimeUnixNano': generate_unix_nano,
+    'ip': FAKER_INSTANCE.ipv4, 'user_id': FAKER_INSTANCE.uuid4,
+    'timestamp': FAKER_INSTANCE.iso8601, 'iso_timestamp': FAKER_INSTANCE.iso8601,
+    'uri': FAKER_INSTANCE.uri, 'status_code': lambda: random.choice([200, 201, 400, 404, 500]),
+    'bytes': lambda: random.randint(100, 10000), 'user_agent': FAKER_INSTANCE.user_agent,
+    'referer': FAKER_INSTANCE.uri, 'service_name': lambda: random.choice(['auth-service', 'billing-service', 'product-catalog']),
+    'exception_type': lambda: random.choice(['NullPointerException', 'IOException']),
+    'traceId': lambda: FAKER_INSTANCE.hexify(text='^' * 32), 'spanId': lambda: FAKER_INSTANCE.hexify(text='^' * 16),
+    'timeUnixNano': lambda: str(int(time.time() * 1e9)), 'observedTimeUnixNano': lambda: str(int(time.time() * 1e9)),
+    'startTimeUnixNano': lambda: str(int(time.time() * 1e9)),
 }
 
-def generate_data_from_schema(schema, root_schema=None):
-    """
-    Recursively generates a Python object (dict/list/primitive) that conforms
-    to the given JSON schema.
-    """
-    root_schema = root_schema or schema
+# This function will be run in a separate process for CPU-bound generation
+def generator_worker(queue, templates_folder, distribution_str, batch_size):
+    """A dedicated worker process for generating log data."""
+    # Each process gets its own LogGenerator instance
+    from log_generator import LogGenerator
+    generator = LogGenerator(templates_folder, distribution_str)
     
-    if "$ref" in schema:
-        ref_path = schema["$ref"]
-        if ref_path.startswith("#/"):
-            parts = ref_path[2:].split("/")
-            ref_schema = root_schema
-            for part in parts:
-                ref_schema = ref_schema[part]
-            return generate_data_from_schema(ref_schema, root_schema)
-        else: # External refs not supported
-            return None
+    if not generator.templates:
+        return # Exit if no templates
 
-    if "oneOf" in schema or "anyOf" in schema:
-        sub_schema = random.choice(schema.get("oneOf") or schema.get("anyOf"))
-        return generate_data_from_schema(sub_schema, root_schema)
-
-    schema_type = schema.get("type")
-    
-    if schema_type == "object":
-        obj = {}
-        if "properties" in schema:
-            for key, prop_schema in schema["properties"].items():
-                if key in PLACEHOLDER_GENERATORS:
-                    obj[key] = PLACEHOLDER_GENERATORS[key]()
-                else:
-                    obj[key] = generate_data_from_schema(prop_schema, root_schema)
-        return obj
-    
-    elif schema_type == "array":
-        num_items = random.randint(1, 3)
-        arr = []
-        if "items" in schema:
-            for _ in range(num_items):
-                arr.append(generate_data_from_schema(schema["items"], root_schema))
-        return arr
-
-    elif schema_type == "string":
-        if schema.get("pattern") == "^[0-9a-fA-F]{24}$": # Specific case for ObjectId hex
-            return generate_oid()
-        return fake.word()
-
-    elif schema_type == "integer":
-        return random.randint(0, 1000)
-
-    elif schema_type == "number":
-        return fake.pyfloat(left_digits=3, right_digits=2, positive=True)
-
-    elif schema_type == "boolean":
-        return fake.boolean()
-        
-    return None
-
-
-def load_templates_from_folder(folder_path):
-    """
-    Loads templates. If a file is .json, it's parsed. If .txt, it's a string.
-    """
-    if not os.path.isdir(folder_path): return {}
-    templates = {}
-    for filename in os.listdir(folder_path):
-        filepath = os.path.join(folder_path, filename)
-        log_type = os.path.splitext(filename)[0]
-        if filename.endswith('.json'):
-            try:
-                with open(filepath, 'r') as f:
-                    templates[log_type] = json.load(f)
-            except json.JSONDecodeError as e:
-                print(f"Warning: Could not parse JSON template {filename}: {e}")
-        elif filename.endswith('.txt'):
-            with open(filepath, 'r') as f:
-                templates[log_type] = f.read().strip()
-    return templates
-
-
-def generate_log_from_template(log_template, generators):
-    """Generates a log from a simple string template."""
-    try:
-        data = {key: generator() for key, generator in generators.items()}
-        return log_template.format(**data)
-    except KeyError:
-        return "Log generation failed due to undefined placeholder."
-
-async def push_to_mdb(log_batch, collection):
-    if not collection: return
-    documents = []
-    for log in log_batch:
-        if isinstance(log, dict):
-            documents.append(log)
-        elif isinstance(log, str):
-            try:
-                documents.append(json.loads(log))
-            except json.JSONDecodeError:
-                documents.append({"message": log}) # Wrap non-JSON strings
-    
-    if documents:
-        try:
-            await collection.insert_many(documents, ordered=False)
-        except Exception as e:
-            print(f"Error writing to MongoDB: {e}")
-            await asyncio.sleep(1)
-
-
-async def worker(args, stats, log_type_choices, log_templates, mdb_collection):
     while True:
-        try:
-            log_type = random.choice(log_type_choices)
-            template = log_templates[log_type]
-            
-            log_batch = []
-            for _ in range(args['batch_size']):
-                if isinstance(template, dict): # It's a parsed JSON Schema
-                    generated_log = generate_data_from_schema(template)
-                    if generated_log:
-                        log_batch.append(generated_log)
-                elif isinstance(template, str): # It's a text template
-                    generated_log = generate_log_from_template(template, PLACEHOLDER_GENERATORS)
-                    log_batch.append(generated_log)
+        batch = []
+        for _ in range(batch_size):
+            _, log_data = generator.generate()
+            if log_data is not None:
+                batch.append(log_data)
+        if batch:
+            queue.put(batch)
 
-            if log_batch:
-                await push_to_mdb(log_batch, mdb_collection)
-                stats['total_sent'] += len(log_batch)
-
-        except asyncio.CancelledError:
-            break
-        except Exception as e:
-            print(f"Worker error: {e}")
-            await asyncio.sleep(1)
-
-
-async def stats_reporter(stats, queue, duration):
-    """Reports stats by putting them into the multiprocessing queue."""
-    last_check_time = time.time()
-    last_sent_count = 0
-    start_time = time.time()
-    
-    while True:
-        await asyncio.sleep(1)
-        current_time = time.time()
-        current_sent_count = stats['total_sent']
-        
-        time_delta = current_time - last_check_time
-        count_delta = current_sent_count - last_sent_count
-        
-        rate = count_delta / time_delta if time_delta > 0 else 0
-        elapsed = current_time - start_time
-        progress = (elapsed / duration) * 100
-        
-        queue.put({
-            'rate': rate, 'total_sent': current_sent_count,
-            'elapsed': elapsed, 'progress': min(progress, 100)
-        })
-
-        last_check_time = current_time
-        last_sent_count = current_sent_count
-
-
-def parse_distribution_map(distribution_str):
-    if not distribution_str: return {}
+async def db_writer_worker(queue, mdb_uri, db_name, collection_name):
+    """An async worker for writing data from the queue to MongoDB."""
+    client = None
     try:
-        return {k.strip(): int(v) for k, v in (item.split(':') for item in distribution_str.split(','))}
-    except Exception: return {}
-
-
-async def async_main(args, queue):
-    """The main async function to run the test."""
-    log_templates = load_templates_from_folder(args['templates_folder'])
-    if not log_templates:
-        queue.put({'error': 'No valid templates were loaded.'})
-        return
-
-    distribution_map = parse_distribution_map(args.get('distribution'))
-    log_type_choices = []
-    if distribution_map:
-        for log_type, weight in distribution_map.items():
-            if log_type in log_templates:
-                log_type_choices.extend([log_type] * weight)
-    if not log_type_choices:
-        log_type_choices = list(log_templates.keys())
-
-    stats = Counter()
-    
-    mdb_client = None
-    mdb_collection = None
-    try:
-        mdb_client = motor.motor_asyncio.AsyncIOMotorClient(args['mdb_uri'])
-        db = mdb_client[args['mdb_db']]
-        mdb_collection = db[args['mdb_collection']]
-        await db.command('ismaster')
-    except Exception as e:
-        queue.put({'error': f"MongoDB connection failed: {e}"})
-        if mdb_client: mdb_client.close()
-        return
-
-    reporter_task = asyncio.create_task(stats_reporter(stats, queue, args['duration']))
-    worker_tasks = [asyncio.create_task(worker(args, stats, log_type_choices, log_templates, mdb_collection)) for _ in range(args['workers'])]
-
-    await asyncio.sleep(args['duration'])
-
-    for task in worker_tasks: task.cancel()
-    reporter_task.cancel()
-    await asyncio.gather(*worker_tasks, reporter_task, return_exceptions=True)
-
-    if mdb_client:
-        mdb_client.close()
-    
-    queue.put({'final': True, 'total_sent': stats['total_sent'], 'duration': args['duration']})
-    queue.put(None) # Sentinel to stop the emitter
-
-
-def run_stress_test(args, queue):
-    """Entry point function to be called by the backend process."""
-    try:
-        asyncio.run(async_main(args, queue))
+        client = motor.motor_asyncio.AsyncIOMotorClient(mdb_uri)
+        collection = client[db_name][collection_name]
+        while True:
+            batch = await queue.get()
+            if batch is None:
+                break
+            if batch:
+                await collection.insert_many(batch, ordered=False)
+            queue.task_done()
+    except Exception:
+        print(f"[DB WRITER ERROR] PID {os.getpid()}:\n{traceback.format_exc()}")
     finally:
-        if 'templates_folder' in args and os.path.exists(args['templates_folder']):
-            shutil.rmtree(args['templates_folder'])
-            print(f"Cleaned up temporary directory: {args['templates_folder']}")
+        if client:
+            client.close()
+
+async def main_logic(params, progress_queue):
+    """Orchestrates the multi-process generation and async writing."""
+    duration = params.get('duration', 60)
+    num_db_workers = params.get('workers', 10)
+    generator_cores = params.get('generator_cores', 1)
+
+    # Use a Manager queue for safe inter-process communication
+    manager = Manager()
+    generated_log_queue = manager.Queue(maxsize=generator_cores * 4)
+    
+    # --- Start CPU-Bound Generator Pool ---
+    # This pool will run the generator_worker function across multiple cores
+    pool = Pool(processes=generator_cores)
+    gen_args = (generated_log_queue, params['templates_folder'], params.get('distribution'), params.get('batch_size', 100))
+    for _ in range(generator_cores):
+        pool.apply_async(generator_worker, args=gen_args)
+
+    # --- Start IO-Bound Async Database Writers ---
+    async_log_queue = asyncio.Queue(maxsize=num_db_workers * 2)
+    db_writer_tasks = [
+        asyncio.create_task(db_writer_worker(async_log_queue, params['mdb_uri'], params['mdb_db'], params['mdb_collection']))
+        for _ in range(num_db_workers)
+    ]
+    
+    start_time = time.time()
+    total_sent = 0
+    last_update = 0
+
+    # --- Main Bridge Loop ---
+    # This loop moves data from the multiprocessing queue to the asyncio queue
+    while time.time() - start_time < duration:
+        try:
+            batch = generated_log_queue.get(timeout=0.1)
+            await async_log_queue.put(batch)
+            total_sent += len(batch)
+        except Exception:
+            # Queue is empty, continue loop
+            pass
+
+        elapsed = time.time() - start_time
+        if elapsed > last_update + 0.5:
+            rate = total_sent / elapsed if elapsed > 0 else 0
+            progress = (elapsed / duration) * 100
+            progress_queue.put({'progress': progress, 'rate': rate, 'total_sent': total_sent, 'elapsed': elapsed})
+            last_update = elapsed
+
+    # --- Cleanup ---
+    pool.terminate()
+    pool.join()
+    for _ in range(num_db_workers):
+        await async_log_queue.put(None)
+    await asyncio.gather(*db_writer_tasks)
+    progress_queue.put({'final': True, 'total_sent': total_sent})
+
+def run_stress_test(params, progress_queue):
+    """Entry point function."""
+    # We need to create a dummy log_generator.py for multiprocessing to work correctly
+    # This is a workaround for some OS-specific multiprocessing quirks.
+    generator_code = """
+import os, json, random, re, time
+from faker import Faker
+from bson import ObjectId
+
+FAKER_INSTANCE = Faker()
+PLACEHOLDER_GENERATORS = {
+    'ip': FAKER_INSTANCE.ipv4, 'user_id': FAKER_INSTANCE.uuid4,
+    'timestamp': FAKER_INSTANCE.iso8601, 'iso_timestamp': FAKER_INSTANCE.iso8601,
+    'uri': FAKER_INSTANCE.uri, 'status_code': lambda: random.choice([200, 201, 400, 404, 500]),
+    'bytes': lambda: random.randint(100, 10000), 'user_agent': FAKER_INSTANCE.user_agent,
+    'referer': FAKER_INSTANCE.uri, 'service_name': lambda: random.choice(['auth-service', 'billing-service', 'product-catalog']),
+    'exception_type': lambda: random.choice(['NullPointerException', 'IOException']),
+    'traceId': lambda: FAKER_INSTANCE.hexify('^'*32), 'spanId': lambda: FAKER_INSTANCE.hexify('^'*16),
+    'timeUnixNano': lambda: str(int(time.time() * 1e9)), 'observedTimeUnixNano': lambda: str(int(time.time() * 1e9)),
+    'startTimeUnixNano': lambda: str(int(time.time() * 1e9)),
+}
+class LogGenerator:
+    def __init__(self, templates_folder, distribution_str=None):
+        self.templates = {}
+        self.current_schema = {}
+        self.load_templates(templates_folder)
+        self.distribution = self._parse_distribution(distribution_str)
+    def load_templates(self, folder):
+        for filename in os.listdir(folder):
+            filepath = os.path.join(folder, filename)
+            template_name = os.path.splitext(filename)[0]
+            try:
+                if filename.endswith('.json'):
+                    with open(filepath, 'r', encoding='utf-8') as f:
+                        content = json.load(f)
+                        if "$schema" in content: self.templates[template_name] = {'type': 'schema', 'content': content}
+                        else: self.templates[template_name] = {'type': 'json_template', 'content': json.dumps(content)}
+                elif filename.endswith('.txt'):
+                     with open(filepath, 'r', encoding='utf-8') as f: self.templates[template_name] = {'type': 'text_template', 'content': f.read()}
+            except Exception: continue
+    def _parse_distribution(self, dist_str):
+        if not dist_str or not self.templates:
+            n = len(self.templates); names = list(self.templates.keys()); return (names, [1.0/n]*n) if n > 0 else ([],[])
+        names, weights = [], []
+        for part in dist_str.split(','):
+            if ':' in part:
+                name, weight_str = part.split(':', 1); name = name.strip()
+                if name in self.templates: names.append(name); weights.append(int(weight_str.strip()))
+        if not names: return list(self.templates.keys()), [1.0/len(self.templates)]*len(self.templates)
+        total = sum(weights); return names, [w/total for w in weights]
+    def _generate_from_schema(self, schema_part):
+        if '$ref' in schema_part:
+            path = schema_part['$ref'].split('/')[1:]; schema = self.current_schema
+            for p in path: schema = schema.get(p, {})
+            return self._generate_from_schema(schema)
+        t = schema_part.get('type')
+        if t == 'object':
+            obj = {}
+            if 'properties' in schema_part:
+                for k, p in schema_part['properties'].items():
+                    if k.lower() in ['$oid', '_id']: obj[k] = str(ObjectId())
+                    elif 'timeunixnano' in k.lower(): obj[k] = str(int(time.time() * 1e9))
+                    elif 'traceid' in k.lower(): obj[k] = FAKER_INSTANCE.hexify('^'*32)
+                    elif 'spanid' in k.lower(): obj[k] = FAKER_INSTANCE.hexify('^'*16)
+                    else: obj[k] = self._generate_from_schema(p)
+            return obj
+        elif t == 'array': return [self._generate_from_schema(schema_part['items']) for _ in range(random.randint(1, 3))]
+        elif t == 'string': return FAKER_INSTANCE.word()
+        elif t == 'integer': return FAKER_INSTANCE.random_int(0, 1000)
+        elif t == 'number': return FAKER_INSTANCE.pyfloat()
+        elif t == 'boolean': return FAKER_INSTANCE.boolean()
+        return None
+    def generate(self):
+        if not self.distribution[0]: return None, None
+        log_type = random.choices(self.distribution[0], self.distribution[1], k=1)[0]
+        info = self.templates[log_type]
+        if info['type'] == 'schema': self.current_schema = info['content']; return log_type, self._generate_from_schema(info['content'])
+        log = info['content']
+        for p in re.findall(r'{(\\w+)}', log):
+            if p in PLACEHOLDER_GENERATORS: log = log.replace(f'{{{p}}}', str(PLACEHOLDER_GENERATORS[p]()), 1)
+        return (log_type, json.loads(log)) if info['type'] == 'json_template' else (log_type, log)
+
+"""
+    with open("log_generator.py", "w") as f:
+        f.write(generator_code)
+
+    try:
+        asyncio.run(main_logic(params, progress_queue))
+    finally:
+        progress_queue.put(None)
+        if os.path.exists("log_generator.py"):
+             os.remove("log_generator.py")
 
