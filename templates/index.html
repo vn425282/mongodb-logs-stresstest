@@ -3,337 +3,378 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Log Stress Test Controller</title>
+    <title>Log Stress Test Service</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; }
-        @import url('https://rsms.me/inter/inter.css');
-        .log-panel { max-height: 400px; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6; /* A light gray background */
+        }
+        /* Custom styles for the toggle switch */
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: #4f46e5;
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #4f46e5;
+        }
+        /* Custom scrollbar for the log panel */
+        #log-panel::-webkit-scrollbar {
+            width: 8px;
+        }
+        #log-panel::-webkit-scrollbar-track {
+            background: #2d3748;
+        }
+        #log-panel::-webkit-scrollbar-thumb {
+            background-color: #4a5568;
+            border-radius: 10px;
+            border: 2px solid #2d3748;
+        }
     </style>
 </head>
-<body class="bg-gray-100 text-gray-800">
-
-    <div class="container mx-auto p-4 md:p-8">
-        <header class="text-center mb-8">
-            <h1 class="text-4xl font-bold text-gray-900">Log Stress Test Service</h1>
-            <p class="text-lg text-gray-600 mt-2">Configure and run a high-volume log generation test against your database.</p>
+<body class="min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-6xl mx-auto bg-white rounded-2xl shadow-lg p-6 md:p-8 space-y-6">
+        <header class="text-center">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-800">Log Stress Test Service</h1>
+            <p class="mt-2 text-gray-500">Configure and run a high-volume log generation test against your database.</p>
         </header>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <!-- Configuration Panel -->
-            <div class="bg-white p-6 rounded-lg shadow-md">
-                <h2 class="text-2xl font-semibold mb-4 border-b pb-2">1. Configuration</h2>
-                <form id="config-form">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label for="duration" class="block text-sm font-medium text-gray-700">Duration (seconds)</label>
-                            <input type="number" id="duration" value="60" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                        </div>
-                        <div>
-                            <label for="workers" class="block text-sm font-medium text-gray-700">Workers (concurrency)</label>
-                            <input type="number" id="workers" value="20" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                        </div>
-                        <div>
-                            <label for="batch-size" class="block text-sm font-medium text-gray-700">Batch Size</label>
-                            <input type="number" id="batch-size" value="100" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                        </div>
-                         <div>
-                            <label for="distribution" class="block text-sm font-medium text-gray-700">Distribution (optional)</label>
-                            <input type="text" id="distribution" placeholder="log_type_1:50,log_type_2:50" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Left Column: Configuration -->
+            <div id="config-card" class="bg-gray-50 p-6 rounded-xl border border-gray-200 space-y-6">
+                <h2 class="text-xl font-bold text-gray-700 border-b pb-2">1. Configuration</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="duration" class="block text-sm font-medium text-gray-600">Duration (seconds)</label>
+                        <input type="number" id="duration" value="60" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2">
                     </div>
-
-                    <h3 class="text-xl font-semibold mt-6 mb-2 border-b pb-2">MongoDB Target</h3>
-                     <div class="space-y-4">
-                        <div>
-                            <label for="mdb-uri" class="block text-sm font-medium text-gray-700">Connection URI</label>
-                            <input type="text" id="mdb-uri" value="mongodb://localhost:27017" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                        </div>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div>
-                                <label for="mdb-db" class="block text-sm font-medium text-gray-700">Database</label>
-                                <input type="text" id="mdb-db" value="logs" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                            </div>
-                            <div>
-                                <label for="mdb-collection" class="block text-sm font-medium text-gray-700">Collection</label>
-                                <input type="text" id="mdb-collection" value="stress_test" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                            </div>
-                        </div>
-                        <!-- Test Connection Button and Status -->
-                        <div>
-                            <button type="button" id="test-mdb-btn" class="w-full bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed">
-                                Test Connection
-                            </button>
-                            <p id="mdb-status" class="text-xs text-center mt-2 h-4"></p>
-                        </div>
+                    <div>
+                        <label for="workers" class="block text-sm font-medium text-gray-600">Workers (concurrency)</label>
+                        <input type="number" id="workers" value="20" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2">
                     </div>
-                </form>
-
-                <h2 class="text-2xl font-semibold mb-4 border-b pb-2 mt-8">2. Upload Log Templates</h2>
-                <div id="drop-zone" class="mt-2 flex justify-center rounded-lg border border-dashed border-gray-900/25 px-6 py-10">
-                    <div class="text-center">
-                         <svg class="mx-auto h-12 w-12 text-gray-300" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M1.5 6a2.25 2.25 0 012.25-2.25h16.5A2.25 2.25 0 0122.5 6v12a2.25 2.25 0 01-2.25 2.25H3.75A2.25 2.25 0 011.5 18V6zM3 16.06V18c0 .414.336.75.75.75h16.5A.75.75 0 0021 18v-1.94l-2.69-2.689a1.5 1.5 0 00-2.12 0l-.88.879.97.97a.75.75 0 11-1.06 1.06l-5.16-5.159a1.5 1.5 0 00-2.12 0L3 16.061zm10.125-7.81a1.125 1.125 0 112.25 0 1.125 1.125 0 01-2.25 0z" clip-rule="evenodd" /></svg>
-                        <div class="mt-4 flex text-sm leading-6 text-gray-600">
-                            <label for="file-upload" class="relative cursor-pointer rounded-md bg-white font-semibold text-indigo-600 focus-within:outline-none focus-within:ring-2 focus-within:ring-indigo-600 focus-within:ring-offset-2 hover:text-indigo-500">
-                                <span>Upload files</span>
-                                <input id="file-upload" name="file-upload" type="file" class="sr-only" multiple webkitdirectory directory>
-                            </label>
-                            <p class="pl-1">or drag and drop</p>
-                        </div>
-                        <p class="text-xs leading-5 text-gray-600">.txt and .json files supported</p>
+                    <div>
+                        <label for="batch_size" class="block text-sm font-medium text-gray-600">Batch Size</label>
+                        <input type="number" id="batch_size" value="100" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2">
+                    </div>
+                    <div>
+                        <label for="distribution" class="block text-sm font-medium text-gray-600">Distribution (optional)</label>
+                        <input type="text" id="distribution" placeholder="log_type_1:50,log_type_2:50" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2">
                     </div>
                 </div>
-                <div id="file-list" class="mt-4 text-sm"></div>
+
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-700 mb-2">MongoDB Target</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label for="mdb_uri" class="block text-sm font-medium text-gray-600">Connection URI</label>
+                            <input type="text" id="mdb_uri" placeholder="mongodb+srv://user:pass@cluster..." class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2">
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label for="mdb_db" class="block text-sm font-medium text-gray-600">Database</label>
+                                <input type="text" id="mdb_db" value="logs" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2">
+                            </div>
+                            <div>
+                                <label for="mdb_collection" class="block text-sm font-medium text-gray-600">Collection</label>
+                                <input type="text" id="mdb_collection" value="stress_test" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2">
+                            </div>
+                        </div>
+                        <button id="test-connection-btn" class="w-full bg-white hover:bg-gray-100 text-gray-800 font-semibold py-2 px-4 border border-gray-300 rounded-lg shadow-sm transition duration-150 ease-in-out">
+                            Test Connection
+                        </button>
+                        <p id="connection-status" class="text-sm text-center mt-2 h-4"></p>
+                    </div>
+                </div>
+
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-700 mb-2">2. Log Templates</h3>
+                    <!-- NEW: Test Mode Toggle Switch -->
+                    <div class="flex items-center justify-between bg-white p-3 rounded-lg border">
+                        <span class="text-sm font-medium text-gray-700">Test Mode: <span id="mode-label">Upload Files</span></span>
+                        <div class="relative inline-block w-12 mr-2 align-middle select-none transition duration-200 ease-in">
+                            <input type="checkbox" name="mode-toggle" id="mode-toggle" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"/>
+                            <label for="mode-toggle" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
+                        </div>
+                    </div>
+                    
+                    <!-- NEW: Dropdown for Hardcoded Mode -->
+                    <div id="hardcoded-options" class="mt-4 hidden">
+                         <label for="hardcoded-select" class="block text-sm font-medium text-gray-600">Select Hardcoded Test Type</label>
+                         <select id="hardcoded-select" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
+                            <option value="simple">Simple Logs (Max Speed)</option>
+                            <option value="complex">Complex Logs (Schema-based)</option>
+                            <option value="mixed">Mixed Logs (4 Types)</option>
+                         </select>
+                    </div>
+
+                    <!-- Existing Upload Area -->
+                    <div id="upload-area" class="mt-4 p-6 border-2 border-dashed border-gray-300 rounded-lg text-center cursor-pointer hover:border-indigo-500 transition">
+                        <p class="text-gray-500">
+                            <span class="font-semibold text-indigo-600">Upload files</span> or drag and drop
+                        </p>
+                        <p class="text-xs text-gray-400 mt-1">.txt and .json files supported</p>
+                        <input id="file-upload" type="file" multiple class="hidden">
+                    </div>
+                    <ul id="file-list" class="mt-2 text-sm text-gray-600 list-disc list-inside"></ul>
+                </div>
             </div>
 
-            <!-- Control & Monitoring Panel -->
-            <div class="bg-white p-6 rounded-lg shadow-md flex flex-col">
-                 <h2 class="text-2xl font-semibold mb-4 border-b pb-2">3. Monitor & Control</h2>
+            <!-- Right Column: Monitor & Control -->
+            <div id="monitor-card" class="bg-gray-50 p-6 rounded-xl border border-gray-200 flex flex-col">
+                <h2 class="text-xl font-bold text-gray-700 border-b pb-2">3. Monitor & Control</h2>
                 
-                <div class="flex items-center space-x-4 mb-6">
-                    <button id="start-btn" class="w-full bg-indigo-600 text-white font-bold py-2 px-4 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:bg-gray-400">
-                        Start Test
-                    </button>
-                    <button id="stop-btn" class="w-full bg-red-600 text-white font-bold py-2 px-4 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:bg-gray-400" disabled>
-                        Stop Test
-                    </button>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+                    <button id="start-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-150 ease-in-out">Start Test</button>
+                    <button id="stop-btn" class="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-3 px-4 rounded-lg shadow-sm transition duration-150 ease-in-out" disabled>Stop Test</button>
                 </div>
 
-                <div class="mb-6">
-                    <h3 class="text-xl font-semibold mb-2">Live Progress</h3>
-                    <div id="progress-bar-container" class="w-full bg-gray-200 rounded-full h-4 overflow-hidden">
-                        <div id="progress-bar" class="bg-green-500 h-4 text-xs text-white text-center leading-none" style="width: 0%"></div>
+                <div class="mt-6">
+                    <h3 class="text-lg font-semibold text-gray-700 mb-2">Live Progress</h3>
+                    <div class="w-full bg-gray-200 rounded-full h-4">
+                        <div id="progress-bar" class="bg-green-500 h-4 rounded-full transition-all duration-500" style="width: 0%"></div>
                     </div>
-                     <p id="progress-text" class="text-center text-sm mt-1 text-gray-600">Waiting to start...</p>
+                    <p id="progress-text" class="text-center text-sm text-gray-500 mt-1">Waiting to start...</p>
                 </div>
-                
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center mb-6">
-                    <div class="bg-gray-50 p-4 rounded-lg">
-                        <h4 class="text-sm font-medium text-gray-500">Event Rate</h4>
-                        <p id="rate-display" class="text-2xl font-bold">0 <span class="text-base font-normal">events/sec</span></p>
+
+                <div class="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
+                    <div class="bg-white p-4 rounded-lg border">
+                        <p class="text-sm text-gray-500">Event Rate</p>
+                        <p id="event-rate" class="text-2xl font-bold text-indigo-600">0 <span class="text-lg font-medium text-gray-400">events/sec</span></p>
                     </div>
-                    <div class="bg-gray-50 p-4 rounded-lg">
-                        <h4 class="text-sm font-medium text-gray-500">Total Events Sent</h4>
-                        <p id="total-display" class="text-2xl font-bold">0</p>
+                    <div class="bg-white p-4 rounded-lg border">
+                        <p class="text-sm text-gray-500">Total Events Sent</p>
+                        <p id="total-sent" class="text-2xl font-bold text-indigo-600">0</p>
                     </div>
-                     <div class="bg-gray-50 p-4 rounded-lg">
-                        <h4 class="text-sm font-medium text-gray-500">Elapsed Time</h4>
-                        <p id="elapsed-display" class="text-2xl font-bold">0s</p>
+                    <div class="bg-white p-4 rounded-lg border">
+                        <p class="text-sm text-gray-500">Elapsed Time</p>
+                        <p id="elapsed-time" class="text-2xl font-bold text-indigo-600">0s</p>
                     </div>
                 </div>
-                
-                <div class="flex-grow flex flex-col">
-                    <h3 class="text-xl font-semibold mb-2">System Log</h3>
-                    <div id="log-panel" class="log-panel flex-grow bg-gray-900 text-white font-mono text-sm p-4 rounded-md overflow-y-auto">
-                        <p class="text-gray-400">> Waiting for test to start...</p>
-                    </div>
+
+                <div class="mt-6 flex-grow flex flex-col">
+                     <h3 class="text-lg font-semibold text-gray-700 mb-2">System Log</h3>
+                     <div id="log-panel" class="flex-grow bg-gray-800 text-white font-mono text-xs p-4 rounded-lg overflow-y-auto h-48 md:h-64">
+                        <p>&gt; Waiting for test to start...</p>
+                     </div>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const socket = io();
+        const socket = io();
+        let uploadedFiles = []; // Store file content
 
-            // --- UI Elements ---
-            const startBtn = document.getElementById('start-btn');
-            const stopBtn = document.getElementById('stop-btn');
-            const dropZone = document.getElementById('drop-zone');
-            const fileInput = document.getElementById('file-upload');
-            const fileListDiv = document.getElementById('file-list');
-            
-            const progressBar = document.getElementById('progress-bar');
-            const progressText = document.getElementById('progress-text');
-            const rateDisplay = document.getElementById('rate-display');
-            const totalDisplay = document.getElementById('total-display');
-            const elapsedDisplay = document.getElementById('elapsed-display');
-            const logPanel = document.getElementById('log-panel');
+        // DOM Elements
+        const startBtn = document.getElementById('start-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const testConnectionBtn = document.getElementById('test-connection-btn');
+        const logPanel = document.getElementById('log-panel');
+        const progressBar = document.getElementById('progress-bar');
+        const progressText = document.getElementById('progress-text');
+        const eventRateEl = document.getElementById('event-rate');
+        const totalSentEl = document.getElementById('total-sent');
+        const elapsedTimeEl = document.getElementById('elapsed-time');
+        const connectionStatusEl = document.getElementById('connection-status');
+        const uploadArea = document.getElementById('upload-area');
+        const fileInput = document.getElementById('file-upload');
+        const fileList = document.getElementById('file-list');
+        // NEW: Mode switch elements
+        const modeToggle = document.getElementById('mode-toggle');
+        const modeLabel = document.getElementById('mode-label');
+        const hardcodedOptions = document.getElementById('hardcoded-options');
+        const hardcodedSelect = document.getElementById('hardcoded-select');
 
-            // MDB Test elements
-            const testMdbBtn = document.getElementById('test-mdb-btn');
-            const mdbStatus = document.getElementById('mdb-status');
-            const mdbUriInput = document.getElementById('mdb-uri');
-
-            let uploadedFiles = [];
-            let isTestRunning = false;
-
-            // --- File Handling ---
-            const handleFiles = (files) => {
+        // --- Event Listeners ---
+        startBtn.addEventListener('click', startTest);
+        stopBtn.addEventListener('click', () => socket.emit('stop_test'));
+        testConnectionBtn.addEventListener('click', testMDBConnection);
+        uploadArea.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, preventDefaults, false);
+        });
+        ['dragenter', 'dragover'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, () => uploadArea.classList.add('border-indigo-500', 'bg-indigo-50'), false);
+        });
+        ['dragleave', 'drop'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, () => uploadArea.classList.remove('border-indigo-500', 'bg-indigo-50'), false);
+        });
+        uploadArea.addEventListener('drop', (e) => handleFiles(e.dataTransfer.files), false);
+        
+        // NEW: Listener for the mode toggle switch
+        modeToggle.addEventListener('change', () => {
+            const isHardcodedMode = modeToggle.checked;
+            if (isHardcodedMode) {
+                modeLabel.textContent = 'Hardcoded';
+                uploadArea.classList.add('hidden');
+                hardcodedOptions.classList.remove('hidden');
+                fileList.innerHTML = ''; // Clear file list
                 uploadedFiles = [];
-                fileListDiv.innerHTML = '<p class="font-semibold">Selected files:</p>';
-                const fileList = document.createElement('ul');
-                fileList.className = 'list-disc list-inside text-gray-600';
+            } else {
+                modeLabel.textContent = 'Upload Files';
+                uploadArea.classList.remove('hidden');
+                hardcodedOptions.classList.add('hidden');
+            }
+        });
 
-                for (const file of files) {
-                    if (file.name.endsWith('.txt') || file.name.endsWith('.json')) {
-                        const reader = new FileReader();
-                        reader.onload = (e) => {
-                            uploadedFiles.push({ name: file.name, content: e.target.result });
-                        };
-                        reader.readAsText(file);
-                        
-                        const listItem = document.createElement('li');
-                        listItem.textContent = file.name;
-                        fileList.appendChild(listItem);
-                    }
-                }
-                fileListDiv.appendChild(fileList);
-            };
-
-            dropZone.addEventListener('dragover', (e) => e.preventDefault());
-            dropZone.addEventListener('drop', (e) => {
-                e.preventDefault();
-                if (e.dataTransfer.items) {
-                     alert('Drag and drop for folders is not supported. Please use the "Upload files" button.');
-                }
-            });
-            fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
-
-            // --- Logging ---
-            const addLog = (message, type = 'info') => {
-                const p = document.createElement('p');
-                const timestamp = new Date().toLocaleTimeString();
-                let colorClass = 'text-gray-400';
-                if (type === 'success') colorClass = 'text-green-400';
-                if (type === 'error') colorClass = 'text-red-400';
-                if (type === 'warn') colorClass = 'text-yellow-400';
-                p.innerHTML = `<span class="text-gray-500">${timestamp}</span> <span class="${colorClass}">> ${message}</span>`;
-                logPanel.appendChild(p);
-                logPanel.scrollTop = logPanel.scrollHeight;
-            };
-
-            // --- State Management ---
-            const setUIState = (running) => {
-                isTestRunning = running;
-                startBtn.disabled = running;
-                stopBtn.disabled = !running;
-                if (running) {
-                    startBtn.textContent = 'Test in Progress...';
-                } else {
-                    startBtn.textContent = 'Start Test';
-                }
-            };
-
-            const resetUI = () => {
-                 progressBar.style.width = '0%';
-                 progressBar.textContent = '';
-                 progressText.textContent = 'Waiting to start...';
-                 rateDisplay.innerHTML = '0 <span class="text-base font-normal">events/sec</span>';
-                 totalDisplay.textContent = '0';
-                 elapsedDisplay.textContent = '0s';
-            };
-
-            // --- Socket.IO Event Handlers ---
-            socket.on('connect', () => addLog('Connected to backend server.', 'success'));
-            socket.on('disconnect', () => addLog('Disconnected from backend server.', 'error'));
-
-            socket.on('test_started', (data) => {
-                addLog(data.message, 'success');
-                setUIState(true);
-            });
-
-            socket.on('test_stopped', (data) => {
-                addLog(data.message, 'warn');
+        // --- Socket.IO Event Handlers ---
+        socket.on('connect', () => addLog('Connected to backend server.'));
+        socket.on('test_started', (data) => {
+            addLog(data.message);
+            setUIState(true);
+        });
+        socket.on('test_stopped', (data) => {
+            addLog(data.message, 'yellow');
+            setUIState(false);
+            resetMetrics();
+        });
+        socket.on('test_update', (data) => {
+            if (data.final) {
+                addLog(`Test finished. Total events sent: ${data.total_sent}`, 'green');
                 setUIState(false);
-            });
+                progressBar.style.width = '100%';
+                progressText.textContent = 'Test finished.';
+            } else if(data.error) {
+                addLog(data.error, 'red');
+            } else {
+                updateMetrics(data);
+            }
+        });
+        socket.on('test_error', (data) => {
+            addLog(data.error, 'red');
+            setUIState(false);
+        });
+        socket.on('mdb_connection_result', (data) => {
+            connectionStatusEl.textContent = data.message;
+            connectionStatusEl.className = data.status === 'success' ? 'text-sm text-center mt-2 h-4 text-green-600' : 'text-sm text-center mt-2 h-4 text-red-600';
+            addLog(`MongoDB connection ${data.status}!`, data.status === 'success' ? 'green' : 'red');
+        });
+         socket.on('system_log', (data) => {
+            addLog(data.message, 'cyan');
+        });
+
+        // --- Main Functions ---
+        function startTest() {
+            const params = {
+                duration: parseInt(document.getElementById('duration').value) || 60,
+                workers: parseInt(document.getElementById('workers').value) || 10,
+                batch_size: parseInt(document.getElementById('batch_size').value) || 100,
+                distribution: document.getElementById('distribution').value,
+                mdb_uri: document.getElementById('mdb_uri').value,
+                mdb_db: document.getElementById('mdb_db').value,
+                mdb_collection: document.getElementById('mdb_collection').value,
+            };
+
+            const payload = { params };
             
-            socket.on('test_error', (data) => {
-                addLog(`ERROR: ${data.error}`, 'error');
-                setUIState(false);
-            });
-
-            socket.on('test_update', (data) => {
-                if(data.error) {
-                    addLog(`ERROR: ${data.error}`, 'error');
-                    setUIState(false);
-                    return;
-                }
-
-                if (data.final) {
-                     addLog(`Test finished. Total events sent: ${data.total_sent}`, 'success');
-                     setUIState(false);
-                     return;
-                }
-
-                const progress = Math.min(data.progress || 0, 100);
-                progressBar.style.width = `${progress.toFixed(1)}%`;
-                
-                const rate = data.rate || 0;
-                const total = data.total_sent || 0;
-                const elapsed = data.elapsed || 0;
-
-                rateDisplay.innerHTML = `${rate.toFixed(0)} <span class="text-base font-normal">events/sec</span>`;
-                totalDisplay.textContent = total;
-                elapsedDisplay.textContent = `${elapsed.toFixed(0)}s`;
-                progressText.textContent = `Test running... ${progress.toFixed(1)}% complete.`;
-            });
-            
-            socket.on('mdb_connection_result', (data) => {
-                testMdbBtn.disabled = false;
-                testMdbBtn.textContent = 'Test Connection';
-
-                if (data.status === 'success') {
-                    mdbStatus.textContent = data.message;
-                    mdbStatus.className = 'text-xs text-center mt-2 h-4 text-green-600';
-                    addLog(data.message, 'success');
-                } else {
-                    mdbStatus.textContent = 'Connection failed. Check log for details.';
-                    mdbStatus.className = 'text-xs text-center mt-2 h-4 text-red-600';
-                    addLog(data.message, 'error');
-                }
-            });
-
-
-            // --- Button Click Handlers ---
-            startBtn.addEventListener('click', () => {
-                if (isTestRunning) return;
+            // NEW: Logic to handle different modes
+            const isHardcodedMode = modeToggle.checked;
+            if (isHardcodedMode) {
+                params.hardcoded_test_type = hardcodedSelect.value;
+                payload.files = []; // No files needed
+            } else {
                 if (uploadedFiles.length === 0) {
-                    alert('Please upload at least one log template file.');
+                    addLog('Error: Please upload at least one log template file.', 'red');
                     return;
                 }
-                
-                resetUI();
-                addLog('Starting test...');
+                payload.files = uploadedFiles;
+            }
 
-                const configParams = {
-                    duration: parseInt(document.getElementById('duration').value, 10),
-                    workers: parseInt(document.getElementById('workers').value, 10),
-                    batch_size: parseInt(document.getElementById('batch-size').value, 10),
-                    distribution: document.getElementById('distribution').value,
-                    mdb_uri: document.getElementById('mdb-uri').value,
-                    mdb_db: document.getElementById('mdb-db').value,
-                    mdb_collection: document.getElementById('mdb-collection').value,
-                };
-                
-                socket.emit('start_test', {
-                    params: configParams,
-                    files: uploadedFiles
+            if (!params.mdb_uri) {
+                addLog('Error: MongoDB Connection URI is required.', 'red');
+                return;
+            }
+
+            resetMetrics();
+            addLog('Starting test...');
+            setUIState(true);
+            socket.emit('start_test', payload);
+        }
+
+        function testMDBConnection() {
+            const uri = document.getElementById('mdb_uri').value;
+            if (!uri) {
+                addLog('Please enter a MongoDB URI to test.', 'yellow');
+                return;
+            }
+            addLog('Pinging MongoDB at ' + uri);
+            connectionStatusEl.textContent = 'Pinging...';
+            connectionStatusEl.className = 'text-sm text-center mt-2 h-4 text-gray-500';
+            socket.emit('test_mdb_connection', { mdb_uri: uri });
+        }
+
+        function handleFiles(files) {
+            uploadedFiles = []; // Reset
+            fileList.innerHTML = '';
+            const filePromises = Array.from(files).map(file => {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        uploadedFiles.push({ name: file.name, content: e.target.result });
+                        const li = document.createElement('li');
+                        li.textContent = file.name;
+                        fileList.appendChild(li);
+                        resolve();
+                    };
+                    reader.onerror = reject;
+                    reader.readAsText(file);
                 });
             });
-
-            stopBtn.addEventListener('click', () => {
-                if (!isTestRunning) return;
-                addLog('Stopping test...', 'warn');
-                socket.emit('stop_test');
+            Promise.all(filePromises).catch(err => {
+                addLog('Error reading files: ' + err, 'red');
             });
+        }
+        
+        // --- UI Helper Functions ---
+        function setUIState(isRunning) {
+            startBtn.disabled = isRunning;
+            stopBtn.disabled = !isRunning;
+            startBtn.classList.toggle('opacity-50', isRunning);
+            startBtn.classList.toggle('cursor-not-allowed', isRunning);
+            stopBtn.classList.toggle('opacity-50', !isRunning);
+            stopBtn.classList.toggle('cursor-not-allowed', !isRunning);
+        }
 
-            testMdbBtn.addEventListener('click', () => {
-                const uri = mdbUriInput.value;
-                if (!uri) {
-                    alert('Please enter a MongoDB Connection URI.');
-                    return;
-                }
-                addLog(`Pinging MongoDB at ${uri}...`);
-                mdbStatus.textContent = 'Testing...';
-                mdbStatus.className = 'text-xs text-center mt-2 h-4 text-gray-500';
-                testMdbBtn.disabled = true;
-                testMdbBtn.textContent = 'Testing...';
-                
-                socket.emit('test_mdb_connection', { mdb_uri: uri });
-            });
-        });
+        function updateMetrics(data) {
+            progressBar.style.width = `${Math.min(100, data.progress)}%`;
+            progressText.textContent = `Test running... ${Math.round(data.progress)}% complete.`;
+            eventRateEl.innerHTML = `${Math.round(data.rate)} <span class="text-lg font-medium text-gray-400">events/sec</span>`;
+            totalSentEl.textContent = Math.round(data.total_sent).toLocaleString();
+            elapsedTimeEl.textContent = `${Math.round(data.elapsed)}s`;
+        }
+
+        function resetMetrics() {
+            progressBar.style.width = '0%';
+            progressText.textContent = 'Waiting to start...';
+            eventRateEl.innerHTML = '0 <span class="text-lg font-medium text-gray-400">events/sec</span>';
+            totalSentEl.textContent = '0';
+            elapsedTimeEl.textContent = '0s';
+            connectionStatusEl.textContent = '';
+        }
+
+        function addLog(message, color = 'white') {
+            const p = document.createElement('p');
+            const timestamp = new Date().toLocaleTimeString();
+            let colorClass = 'text-gray-300';
+            if (color === 'green') colorClass = 'text-green-400';
+            if (color === 'red') colorClass = 'text-red-400';
+            if (color === 'yellow') colorClass = 'text-yellow-400';
+            if (color === 'cyan') colorClass = 'text-cyan-400';
+            
+            p.innerHTML = `<span class="text-gray-500">${timestamp} PM &gt;</span> <span class="${colorClass}">${message}</span>`;
+            logPanel.appendChild(p);
+            logPanel.scrollTop = logPanel.scrollHeight; // Auto-scroll
+        }
+        
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
     </script>
 </body>
 </html>
+
